@@ -1,0 +1,14 @@
+#!name=TestFlight Relay
+#!desc=TestFlight 脚本中继：请求中转、多账号索引合并、详情缓存（Stash 适配版）
+# 上游：ScriptingApp/Community-Scripts 的 TestFlight-Relay.sgmodule
+# 说明：拦截 http://tf-relay.test:8799/ 的明文 HTTP 请求，由脚本返回响应，本机无需真实监听端口。
+# 不要在此覆写里加 argument 以外的参数：脚本仅接受 timeout 一个键。
+
+[Script]
+TF-Relay = type=http-request, pattern=^http://tf-relay\.test(?::8799)?/, requires-body=true, max-size=1048576, timeout=60, script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js
+TF-Relay-Refresh = type=cron, cronexp="0 */5 * * *", timeout=300, script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js
+
+# 若客户端请求未被脚本接管（表现为连接失败而不是脚本返回 JSON），
+# 再启用下面这条规则，让请求无论如何都进 Stash 的 HTTP 处理链路（脚本会先返回，不会真的出网）：
+# [Rule]
+# DOMAIN,tf-relay.test,PROXY
