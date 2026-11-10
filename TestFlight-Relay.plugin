@@ -7,10 +7,8 @@
 # 脚本仅接受 timeout 一个 argument 键，加别的键会直接报错。
 
 [Script]
-http-request ^http://tf-relay\.test(?::8799)?/ script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js, requires-body=true, max-size=1048576, timeout=60, tag=TF-Relay
-cron "0 */5 * * *" script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js, timeout=300, tag=TF-Relay-Refresh
+http-request ^http://tf-relay\.test(?::8799)?/ script-path=https://cdn.jsdelivr.net/gh/your98k/tf-relay-compat@main/tfrelay.compat.js, requires-body=true, max-size=1048576, timeout=60, tag=TF-Relay
+cron "0 */5 * * *" script-path=https://cdn.jsdelivr.net/gh/your98k/tf-relay-compat@main/tfrelay.compat.js, timeout=300, tag=TF-Relay-Refresh
 
-# 若客户端请求未被脚本接管（表现为连接失败而不是脚本返回 JSON），
-# 再加一条规则让请求进入 Loon 的 HTTP 链路（脚本会先返回，不会真的出网）：
-# [Rule]
-# DOMAIN,tf-relay.test,PROXY
+[MITM]
+hostname = %APPEND% tf-relay.test
