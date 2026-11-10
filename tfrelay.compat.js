@@ -1,8 +1,11 @@
 // ===================================================================
-// Stash / Loon 适配补丁（仅改三处，业务逻辑零改动）
-// 1) Promise.withResolvers polyfill（iOS < 16.4 的 JSCore 无此 API）
-// 2) finish() 统一输出数字 status（Stash/Loon 不识别 "HTTP/1.1 200 OK" 字符串）
-// 3) this.$request -> currentRequest()（Stash/Loon 顶层 this 不是全局对象）
+// Stash / Loon 适配补丁（业务逻辑不改，只改平台差异 6 处）
+// 1) Promise.withResolvers polyfill（iOS < 16.4 的 JSCore 没有）
+// 2) this.$request -> currentRequest()（两个平台顶层 this 不是全局对象）
+// 3) finish() 按平台交付：Stash 必须 $done({response:{...}})，Surge/Loon 用平铺
+// 4) 无 $task 时不再把 request 原样交回宿主（Stash 没有 $task，会变成空 body）
+// 5) timeout 单位：Surge/Stash 用秒，其余用毫秒
+// 6) status 统一数字（Stash/Loon 的 $done 不认 "HTTP/1.1 200 OK"）
 // ===================================================================
 if (typeof Promise.withResolvers !== "function") {
   Promise.withResolvers = function () {
@@ -11,6 +14,13 @@ if (typeof Promise.withResolvers !== "function") {
     return { promise, resolve, reject };
   };
 }
+/** 当前平台是否 Stash（其 $done 需 response 包一层）。 */
+const isStash = () => !!(globalThis.$environment && globalThis.$environment["stash-version"]);
+/** 超时单位：Surge 与 Stash 的 HTTP 客户端用秒，其余用毫秒。 */
+const usesSecondsTimeout = () => {
+  const env = globalThis.$environment;
+  return !!(env && (env["surge-version"] || env["stash-version"]));
+};
 /** 请求上下文判定：定时任务执行时 $request 不存在。 */
 const currentRequest = () =>
   typeof $request !== "undefined" && $request && typeof $request.url === "string" ? $request : null;
@@ -49,7 +59,7 @@ const http = (() => {
     const timer = setTimeout(() => reject(Object.assign(new Error("HTTP timeout"), { code: "HTTP_TIMEOUT" })), seconds * 1000)
     try {
       // 业务层统一秒制；只有 Surge 原生请求使用秒，其他平台使用毫秒。
-      send({ ...op, method, timeout: globalThis.$environment?.["surge-version"] ? seconds : seconds * 1000 }, response => {
+      send({ ...op, method, timeout: usesSecondsTimeout() ? seconds : seconds * 1000 }, response => {
         if (response.error) return reject(response.error)
         resolve({ status: response.status ?? response.statusCode, headers: response.headers || {}, body: response.body ?? "" })
       })
@@ -99,7 +109,10 @@ const finish = result => {
   const raw = response.status ?? 200;
   const code = typeof raw === "number" ? raw
     : Number((String(raw).match(/(\d{3})/) || [])[1]) || 200;
-  $done({ status: code, headers: response.headers || {}, body: response.body ?? "" });
+  const payload = { status: code, headers: response.headers || {}, body: response.body ?? "" };
+  // Stash：request 脚本只能用 response 字段替换响应；Surge/Loon：平铺。
+  if (isStash()) return $done({ response: payload });
+  $done(payload);
 }
 
 /** 通用系统通知；通知不可用不妨碍本地错误响应和脚本结束。 */
@@ -1675,8 +1688,7 @@ const forwardRequest = async req => {
     headers: { ...clean($request.headers), host: "testflight.apple.com" },
     ...forwardingBody(),
   };
-  // 原版在无 $task 的平台把 request 原样交回宿主（QX 行为）；
-  // Stash/Loon 只要有 $httpClient 就必须自己完成转发，否则响应会变成空 body。
+  // Stash/Loon 没有 $task，但都有 $httpClient，必须自己完成转发。
   if (!globalThis.$task && typeof $httpClient === "undefined") return request;
   const response = await http[req.method.toLowerCase()]({
     ...request,
