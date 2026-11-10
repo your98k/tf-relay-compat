@@ -1,0 +1,16 @@
+#!name=TestFlight Relay
+#!desc=TestFlight 脚本中继：请求中转、多账号索引合并、详情缓存（Loon 适配版）
+#!author=ScriptingApp（Stash/Loon 兼容改造：your98k）
+#!system=ios
+# 上游：ScriptingApp/Community-Scripts 的 TestFlight-Relay.sgmodule
+# 说明：拦截 http://tf-relay.test:8799/ 的明文 HTTP 请求，由脚本返回响应，本机无需真实监听端口。
+# 脚本仅接受 timeout 一个 argument 键，加别的键会直接报错。
+
+[Script]
+http-request ^http://tf-relay\.test(?::8799)?/ script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js, requires-body=true, max-size=1048576, timeout=60, tag=TF-Relay
+cron "0 */5 * * *" script-path=https://raw.githubusercontent.com/your98k/tf-relay-compat/main/tfrelay.compat.js, timeout=300, tag=TF-Relay-Refresh
+
+# 若客户端请求未被脚本接管（表现为连接失败而不是脚本返回 JSON），
+# 再加一条规则让请求进入 Loon 的 HTTP 链路（脚本会先返回，不会真的出网）：
+# [Rule]
+# DOMAIN,tf-relay.test,PROXY
